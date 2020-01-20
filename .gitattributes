@@ -1,0 +1,9 @@
+.gitattributes export-ignore
+.gitignore export-ignore
+.svnignore export-ignore
+CHANGELOG.md export-ignore
+CHANGELOG.cmd export-ignore
+README.cmd export-ignore
+LICENSE export-ignore
+/errors export-ignore
+/archive export-ignore
