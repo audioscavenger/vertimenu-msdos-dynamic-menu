@@ -74,6 +74,7 @@ set LOG=%LOGS%\%~n0.log
 set EXAMPLE_LocalFolder=%rootDir%\install-product-files
 
 :: TMP files management - RANDOM everytime because of file lock by our friend cmd.exe
+set DEBUGLOG=ddebug.log
 set TMPFILE=%LOGS%\%~n0.%RANDOM%.tmp.txt
 set TMPWARN=%LOGS%\%~n0.warning.%RANDOM%.tmp.log
 set TMPERR=%LOGS%\%~n0.error.%RANDOM%.tmp.log
@@ -128,8 +129,8 @@ set alwaysExportAll=alwaysExportAll
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 set "switch="
 set "endHeader="
-REM ::                    1=b ;  2=c   ;   3=d   ;  4=e   ;  4=f  ;   5=g    ;  6=h
-REM :: labelLine format = tab ; select ; product ; export ; color ; versions ; label
+REM ::                    1=b ;  2=c   ;  4=d   ;   3=e    4=f  ;   5=g    ;  6=h
+REM :: labelLine format = tab ; select ; export ; product color ; versions ; label
 REM set options=1;x;Tools;   ;tools + Rkit ^(cannot remove^)
 set           options=1;x;Y;AA; %y%;3.3.0.12 3.2.4.0;AA label             
 set options=%options%/2; ;Y;AA1; %y%;3.5.5.3-US;AA1              
@@ -163,7 +164,6 @@ REM IF DEFINED AUTOMATED call :EXAMPLE_alterVersionsAvailableInMenu & goto :main
 
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: menu loop
-:: menu needs to be redrawn with a goto
 :menu
 :: you could alter the menu options before loading it, here:
 REM call :EXAMPLE_alterVersionsAvailableInMenu
@@ -171,6 +171,7 @@ REM call :EXAMPLE_alterVersionsAvailableInMenu
 :: define tabbed indentations spaces here:
 call :vmenu_setTabbedSpaces
 
+:: menu needs to be redrawn with a goto
 goto :vmenu_header
 REM IF /I NOT [%choice%]==[n] goto :menu
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::: menu loop
@@ -195,7 +196,7 @@ call :vmenu_copyParentVersions-EXAMPLE
 :: it will call a routine that will alter the menu/versions and then reload the menu
 IF "%installEXAMPLEsmthAndReloadMenu%"=="x" call :installsmthAndReloadMenu-EXAMPLE & goto :menu
 
-:: STEP 3: visualize the options finally selected with their version
+:: STEP 3: (optional) visualize the options finally selected with their version
 call :vmenu_listOptions %select%
 
 :: STEP 4: (optional) validate each version
@@ -232,7 +233,7 @@ goto :EOF
 
 
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-:: start of magic menu
+:: start of magic vmenu
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :vmenu_header
   cls
@@ -286,18 +287,18 @@ for %%a in ("%options:/=" "%") do (
   set /A lastOption+=1
   set labelLine=%%~a
 
-  REM ::                    1=b ;  2=c   ;   3=d   ;  4=e   ;  4=f  ;   5=g    ;  6=h
-  REM :: labelLine format = tab ; select ; product ; export ; color ; versions ; label
+  REM ::                    1=b ;  2=c   ;  4=d   ;   3=e    4=f  ;   5=g    ;  6=h
+  REM :: labelLine format = tab ; select ; export ; product color ; versions ; label
   for /F "tokens=1-6* delims=;" %%b in ("!labelLine!") do (
     set "tab[!lastOption!]=%%~b"
     set "tabs[!lastOption!]=!tabSpaces[%%~b]!"
 
     REM :: grab selected products and options: an "x" marks the bounty
     set "select[!lastOption!]=[%%~c]"
-    set "install%%d=%%~c"
+    set "install%%e=%%~c"
     
     REM :: compatibility with Vista/Server 2012 and below: no colors available
-    set export[!lastOption!]=%%~e
+    set export[!lastOption!]=%%~d
     
     REM :: compatibility with Vista/Server 2012 and below: no colors available
     set color=%%~f
@@ -307,7 +308,7 @@ for %%a in ("%options:/=" "%") do (
     set "versions=%%~g"
     set "versions[!lastOption!]=%%~g"
     REM :: IMPORTANT: this is where we get the local detected versions found by :detect_local_installs
-    call set "versionsFound[!lastOption!]=%%versionsFound%%~d%%"
+    call set "versionsFound[!lastOption!]=%%versionsFound%%~e%%"
 
     set numVersions=0
     set firstVersion=
@@ -454,7 +455,7 @@ call :vmenu_header
       IF DEFINED DEBUG (
         set ddebug=!toggle[%%i]!    !move2Version[%%i]!
         set ddebugToggle=!toggle[%%i]!    !move2Version[%%i]!
-        echo !ddebugToggle!>>ggg
+        echo !ddebugToggle!>>%DEBUGLOG%
       )
       if !tab[%%i]! EQU 0 (
         REM :: spacer
@@ -565,7 +566,7 @@ call :vmenu_header
   REM :: jump next one if this is disabled - DO WHILE emulation
   REM :: This cannot work if first or last option is disabled
   :vmenu_whileDisabled
-  IF DEFINED DEBUG call echo toggle[%sel%]=!toggle[%sel%]! %lastOption%   moveSel[%keyCode%]=!moveSel[%keyCode%]!>>ggg
+  IF DEFINED DEBUG call echo toggle[%sel%]=!toggle[%sel%]! %lastOption%   moveSel[%keyCode%]=!moveSel[%keyCode%]!>>%DEBUGLOG%
   REM :: the loop below will jump to next selection that's enabled when pressing a Letter,
   REM :: if the letter leads to a disabled option, by forcing using an Arrow instead
   if "!toggle[%sel%]!" equ "off" (
@@ -591,7 +592,9 @@ set "sel="
 del /f /q %versionsSelected% >NUL 2>NUL
 :: We need to process options in reverse order because that's how we'll pop then out of the errorlevel
 for /L %%i in (1,1,%lastOption%) do (
-  REM if "!select[%%i]!" equ "%mark%" set "sel=!sel!%%i"
+  REM :: we always export all versions because we process every options in reverse order
+  echo "!version[%%i]!">>%versionsSelected%
+  
   REM :: 1<<x = 2 power x
   REM :: To get the original selections, just for loop in reverse and substract each power values of 2
   REM :: We also make sure we select only those which are not disabled by checking for !toggle[%%i]!
@@ -599,12 +602,10 @@ for /L %%i in (1,1,%lastOption%) do (
     REM :: We also export only the products tagged "Y" for export unless alwaysExportAll is set
     REM :: Beware: by doing so, you do not export Parent menu items and cannot copy their version into their children in :vmenu_copyParentVersions
     if /I "%alwaysExportAll%"=="alwaysExportAll" (
-      echo "!version[%%i]!">>%versionsSelected%
       set /A "sel+=1<<%%i"
     ) ELSE (
-      if /I "!export[%%i]!%alwaysExportAll%"=="Y" (
+      if /I "!export[%%i]!"=="Y" (
         set /A "sel+=1<<%%i"
-        echo "!version[%%i]!">>%versionsSelected%
       )
     )
   )
@@ -626,12 +627,12 @@ set binarySum=%1
 :: TODO: this could be exported as a separate routine since we need that to reverse option selections
 set "lastOption=0"
 for %%a in ("%options:/=" "%") do (
-  REM ::                    1=b ;  2=c   ;   3=d   ;  4=e   ;  4=f  ;   5=g    ;  6=h
-  REM :: labelLine format = tab ; select ; product ; export ; color ; versions ; label
+  REM ::                    1=b ;  2=c   ;  4=d   ;   3=e    4=f  ;   5=g    ;  6=h
+  REM :: labelLine format = tab ; select ; export ; product color ; versions ; label
   set /A lastOption+=1
   set labelLine=%%~a
   for /f "tokens=1-6* delims=;" %%b in ("!labelLine!") do (
-    set product[!lastOption!]=%%~d
+    set product[!lastOption!]=%%~e
   )
 )
 
@@ -731,7 +732,7 @@ goto :EOF
 :detect_winVersion
 IF DEFINED DEBUG echo %HIGH%%c% %~0 %END%%c% %* %END%
 set osType=workstation
-wmic os get Caption /value | findstr Server >%TMPFILE%
+wmic os get Caption /value | findstr Server >%TMP%\wmic.%RANDOM%.tmp
 IF %ERRORLEVEL% EQU 0 set osType=server
 
 :: https://www.lifewire.com/windows-version-numbers-2625171
@@ -743,7 +744,7 @@ IF [%osType%]==[workstation] (
   ver | findstr /C:"Version 6.0" && set WindowsVersion=Vista& goto :EOF
   ver | findstr /C:"Version 5.1" && set WindowsVersion=XP& goto :EOF
 ) ELSE (
-  for /f "tokens=4" %%a in (%TMPFILE%) do set WindowsVersion=%%a
+  for /f "tokens=4" %%a in (%TMP%\wmic.%RANDOM%.tmp) do set WindowsVersion=%%a
 )
 goto :EOF
 
